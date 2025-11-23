@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User, BookOpen, LogOut } from 'lucide-react';
 import { Login } from './Login';
+import { authService } from '../firebase';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,7 +10,18 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [username, setUsername] = useState<string | null>(localStorage.getItem('collab_username'));
+  const [user, setUser] = useState<any>(null);
   const location = useLocation();
+
+  useEffect(() => {
+    const unsubscribe = authService.onAuthChange((currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        setUsername(currentUser.displayName || currentUser.email);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,9 +40,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogout = () => {
     localStorage.removeItem('collab_username');
     setUsername(null);
+    if (user) {
+      authService.signOut();
+    }
   };
 
-  if (!username) {
+  if (!username && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
@@ -38,6 +53,21 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <h1 className="text-3xl font-bold text-indigo-600 mb-2">CollabQuiz</h1>
             <p className="text-slate-500">Study together, win together.</p>
           </div>
+          
+          {/* Google Sign In */}
+          <div className="mb-6">
+            <Login />
+          </div>
+          
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-slate-500">or continue as guest</span>
+            </div>
+          </div>
+          
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">What should we call you?</label>
@@ -77,7 +107,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Link>
             
             <div className="flex items-center gap-4">
-              <Login />
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full">
+                <User size={16} className="text-slate-500" />
+                <span className="text-sm font-medium text-slate-700">{username}</span>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition"
+                title="Logout"
+              >
+                <LogOut size={20} />
+              </button>
             </div>
           </div>
         </div>

@@ -32,11 +32,16 @@ export const Dashboard: React.FC = () => {
       author: localStorage.getItem('collab_username') || 'Anonymous'
     };
 
+    console.log('Creating deck:', newDeck);
+    
     try {
-      await dbService.createDeck(newDeck);
+      const result = await dbService.createDeck(newDeck);
+      console.log('Deck created successfully:', result);
       setShowCreateModal(false);
-    } catch (error) {
+      form.reset();
+    } catch (error: any) {
       console.error("Error creating deck:", error);
+      alert(`Failed to create deck: ${error.message}\n\nPlease check Firebase Console and ensure:\n1. Firestore is enabled\n2. Security rules allow writes\n3. You're authenticated (if rules require it)`);
     }
   };
 

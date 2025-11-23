@@ -16,6 +16,8 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
+console.log("✅ Firebase initialized successfully");
+
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
 
@@ -46,13 +48,30 @@ export const authService = {
 // Helper for simplified DB access
 export const dbService = {
   createDeck: async (data: any) => {
-    return addDoc(collection(db, 'decks'), { ...data, createdAt: Date.now(), questionCount: 0 });
+    try {
+      const docRef = await addDoc(collection(db, 'decks'), { ...data, createdAt: Date.now(), questionCount: 0 });
+      console.log(`✅ Created new deck with ID: ${docRef.id}`);
+      return docRef;
+    } catch (error: any) {
+      console.error('❌ Failed to create deck:', error);
+      if (error.code === 'permission-denied') {
+        throw new Error('Permission denied. Please check Firestore security rules.');
+      }
+      throw error;
+    }
   },
   getDecks: (callback: (decks: any[]) => void) => {
     const q = query(collection(db, 'decks'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const decks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log(`📚 Loaded ${decks.length} decks from database`);
       callback(decks);
+    }, (error) => {
+      console.error('❌ Failed to load decks:', error);
+      if (error.code === 'permission-denied') {
+        console.error('Permission denied. Please check Firestore security rules.');
+      }
+      callback([]);
     });
   },
   getDeck: async (id: string) => {
