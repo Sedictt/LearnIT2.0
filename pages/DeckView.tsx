@@ -1,0 +1,344 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { dbService } from '../firebase';
+import { Deck, Question, QuestionType } from '../types';
+import { Plus, Play, Sparkles, BookOpen, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { generateQuestions } from '../services/geminiService';
+import { QUESTION_TYPES } from '../constants';
+
+export const DeckView: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [deck, setDeck] = useState<Deck | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  
+  // Add Question State
+  const [qType, setQType] = useState<QuestionType>(QuestionType.MULTIPLE_CHOICE);
+  const [qText, setQText] = useState('');
+  const [qOptions, setQOptions] = useState<string[]>(['', '', '', '']);
+  const [qAnswer, setQAnswer] = useState('');
+
+  // Solo Review State
+  const [reviewMode, setReviewMode] = useState(false);
+  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    dbService.getDeck(id).then((d) => setDeck(d as Deck));
+    const unsub = dbService.getQuestions(id, (qs) => {
+      setQuestions(qs);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [id]);
+
+  const handleAddQuestion = async () => {
+    if (!id || !qText || !qAnswer) return;
+    
+    // Simple validation
+    if (qType === QuestionType.MULTIPLE_CHOICE && qOptions.some(o => !o.trim())) {
+      alert("Please fill all options");
+      return;
+    }
+
+    const newQ = {
+      type: qType,
+      question: qText,
+      options: qType === QuestionType.MULTIPLE_CHOICE ? qOptions : undefined,
+      answer: qAnswer,
+      author: localStorage.getItem('collab_username') || 'Anonymous'
+    };
+
+    await dbService.addQuestion(id, newQ);
+    resetForm();
+    setShowAddModal(false);
+  };
+
+  const handleGenerateAI = async () => {
+    if (!deck) return;
+    setGenerating(true);
+    try {
+      const generatedQs = await generateQuestions(deck.subject, deck.purpose);
+      for (const q of generatedQs) {
+        await dbService.addQuestion(deck.id, q);
+      }
+    } catch (e) {
+      alert("Failed to generate questions. Check console or API key.");
+    } finally {
+      setGenerating(false);
+      setShowAddModal(false);
+    }
+  };
+
+  const startLiveSession = async () => {
+    if(!deck || !id) return;
+    const hostId = localStorage.getItem('collab_uid')!;
+    const docRef = await dbService.createSession(id, deck.title, hostId);
+    navigate(`/play/${docRef.id}`);
+  };
+
+  const resetForm = () => {
+    setQText('');
+    setQOptions(['', '', '', '']);
+    setQAnswer('');
+  };
+
+  if (loading) return <div className="p-12 text-center text-slate-500">Loading...</div>;
+  if (!deck) return <div className="p-12 text-center text-red-500">Deck not found</div>;
+
+  // Render Solo Review Mode
+  if (reviewMode) {
+    const currentQ = questions[currentReviewIndex];
+    return (
+      <div className="max-w-2xl mx-auto py-12">
+        <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-slate-700">Reviewing {currentReviewIndex + 1} / {questions.length}</h2>
+            <button onClick={() => setReviewMode(false)} className="text-sm font-medium text-slate-500 hover:text-slate-800">Exit Review</button>
+        </div>
+        
+        <div className="bg-white rounded-3xl shadow-xl p-8 min-h-[400px] flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-indigo-100">
+                <div className="h-full bg-indigo-500 transition-all duration-300" style={{width: `${((currentReviewIndex + 1) / questions.length) * 100}%`}}></div>
+            </div>
+
+            <div className="space-y-6 mt-4">
+                <span className="inline-block px-3 py-1 rounded-full bg-slate-100 text-xs font-bold text-slate-500 tracking-wider">
+                    {currentQ.type.replace('_', ' ')}
+                </span>
+                <h3 className="text-2xl font-bold text-slate-900 leading-snug">{currentQ.question}</h3>
+                
+                {showAnswer ? (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 bg-emerald-50 border border-emerald-100 p-6 rounded-xl">
+                        <p className="text-sm font-semibold text-emerald-800 uppercase mb-2">Correct Answer</p>
+                        <p className="text-xl font-medium text-emerald-900">{Array.isArray(currentQ.answer) ? currentQ.answer.join(', ') : currentQ.answer}</p>
+                    </div>
+                ) : (
+                   <div className="py-12 flex items-center justify-center text-slate-300 italic">
+                      Tap reveal to see answer
+                   </div>
+                )}
+            </div>
+
+            <div className="mt-8 flex gap-4">
+                <button 
+                    onClick={() => setShowAnswer(!showAnswer)}
+                    className="flex-1 py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 transition"
+                >
+                    {showAnswer ? 'Hide Answer' : 'Reveal Answer'}
+                </button>
+                <button 
+                    onClick={() => {
+                        if (currentReviewIndex < questions.length - 1) {
+                            setCurrentReviewIndex(prev => prev + 1);
+                            setShowAnswer(false);
+                        } else {
+                            setReviewMode(false);
+                            setCurrentReviewIndex(0);
+                        }
+                    }}
+                    className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg shadow-slate-200"
+                >
+                    {currentReviewIndex < questions.length - 1 ? 'Next' : 'Finish'}
+                </button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Default View
+  return (
+    <div className="space-y-8 pb-24">
+      <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+            <div>
+                <span className="text-indigo-600 font-bold text-sm tracking-wider uppercase">{deck.subject}</span>
+                <h1 className="text-4xl font-extrabold text-slate-900 mt-1 mb-2">{deck.title}</h1>
+                <p className="text-slate-500 text-lg max-w-2xl">{deck.purpose}</p>
+                <div className="flex items-center gap-4 mt-6 text-sm text-slate-400 font-medium">
+                    <span className="flex items-center gap-1.5"><BookOpen size={16}/> {questions.length} Questions</span>
+                    <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                    <span>Exam: {new Date(deck.examDate).toLocaleDateString()}</span>
+                </div>
+            </div>
+            <div className="flex flex-col gap-3 min-w-[200px]">
+                <button 
+                  onClick={startLiveSession}
+                  className="w-full bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-200"
+                >
+                  <Play size={20} fill="currentColor" /> Live Game
+                </button>
+                <button 
+                  onClick={() => { setReviewMode(true); setCurrentReviewIndex(0); setShowAnswer(false); }}
+                  disabled={questions.length === 0}
+                  className="w-full bg-white text-slate-700 border border-slate-200 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 transition disabled:opacity-50"
+                >
+                  Start Review
+                </button>
+            </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-bold text-slate-800">Questions</h3>
+        <button 
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 text-indigo-600 font-semibold bg-indigo-50 px-4 py-2 rounded-lg hover:bg-indigo-100 transition"
+        >
+          <Plus size={18} /> Add Item
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {questions.length === 0 ? (
+           <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+              <p className="text-slate-500 font-medium">No questions yet. Add one or ask AI!</p>
+              <button onClick={() => setShowAddModal(true)} className="mt-4 text-indigo-600 font-bold hover:underline">Add First Question</button>
+           </div>
+        ) : (
+            questions.map((q, idx) => (
+                <div key={q.id} className="bg-white p-6 rounded-xl border border-slate-200 hover:border-indigo-200 transition group relative">
+                    <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">{q.type}</span>
+                            </div>
+                            <p className="text-lg font-medium text-slate-800">{q.question}</p>
+                            {q.type === QuestionType.MULTIPLE_CHOICE && q.options && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                                    {q.options.map((opt, i) => (
+                                        <div key={i} className={`text-sm px-3 py-2 rounded border ${opt === q.answer ? 'bg-emerald-50 border-emerald-200 text-emerald-700 font-medium' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                            {String.fromCharCode(65+i)}. {opt}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {q.type !== QuestionType.MULTIPLE_CHOICE && (
+                                <div className="mt-3 text-sm text-emerald-600 font-medium bg-emerald-50 inline-block px-3 py-1 rounded">
+                                    Answer: {Array.isArray(q.answer) ? q.answer.join(', ') : q.answer}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-xs text-slate-400">
+                        <span>Added by {q.author}</span>
+                    </div>
+                </div>
+            ))
+        )}
+      </div>
+
+      {/* Add Question Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
+              <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center rounded-t-2xl">
+                 <h3 className="text-xl font-bold text-slate-800">Add to Reviewer</h3>
+                 <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+                   <span className="text-2xl">&times;</span>
+                 </button>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                 {/* AI Banner */}
+                 <div className="bg-gradient-to-r from-violet-500 to-indigo-600 rounded-xl p-4 text-white flex items-center justify-between shadow-lg shadow-indigo-200">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                            <Sparkles size={20} className="text-yellow-300" />
+                        </div>
+                        <div>
+                            <h4 className="font-bold">Feeling lazy?</h4>
+                            <p className="text-sm text-indigo-100">Let Gemini generate questions for you.</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleGenerateAI}
+                        disabled={generating}
+                        className="bg-white text-indigo-600 px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-50 transition disabled:opacity-50"
+                    >
+                        {generating ? 'Generating...' : 'Auto-Generate'}
+                    </button>
+                 </div>
+
+                 <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Question Type</label>
+                        <div className="flex p-1 bg-slate-100 rounded-lg">
+                            {QUESTION_TYPES.map(t => (
+                                <button 
+                                    key={t.value} 
+                                    onClick={() => setQType(t.value as QuestionType)}
+                                    className={`flex-1 py-2 text-sm font-medium rounded-md transition ${qType === t.value ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Question</label>
+                        <textarea 
+                            value={qText}
+                            onChange={e => setQText(e.target.value)}
+                            rows={2}
+                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                            placeholder="Type your question here..."
+                        />
+                    </div>
+
+                    {qType === QuestionType.MULTIPLE_CHOICE && (
+                        <div className="space-y-3">
+                             <label className="block text-sm font-medium text-slate-700">Options (Select the correct one)</label>
+                             {qOptions.map((opt, idx) => (
+                                 <div key={idx} className="flex gap-2">
+                                     <button 
+                                        onClick={() => setQAnswer(opt)}
+                                        className={`w-10 flex-shrink-0 flex items-center justify-center rounded-lg border transition ${qAnswer === opt && opt !== '' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-slate-400 hover:border-slate-400'}`}
+                                     >
+                                        {qAnswer === opt && opt !== '' ? <CheckCircle size={18} /> : String.fromCharCode(65+idx)}
+                                     </button>
+                                     <input 
+                                        value={opt}
+                                        onChange={e => {
+                                            const newOpts = [...qOptions];
+                                            newOpts[idx] = e.target.value;
+                                            setQOptions(newOpts);
+                                            // If this was the answer, update answer text too
+                                            if (qAnswer === opt) setQAnswer(e.target.value);
+                                        }}
+                                        placeholder={`Option ${String.fromCharCode(65+idx)}`}
+                                        className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                     />
+                                 </div>
+                             ))}
+                        </div>
+                    )}
+
+                    {qType !== QuestionType.MULTIPLE_CHOICE && (
+                        <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-1">Correct Answer</label>
+                             <input 
+                                value={qAnswer}
+                                onChange={e => setQAnswer(e.target.value)}
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder={qType === QuestionType.ENUMERATION ? "Comma separated items..." : "Exact answer..."}
+                             />
+                        </div>
+                    )}
+                 </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
+                 <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:text-slate-800">Cancel</button>
+                 <button onClick={handleAddQuestion} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition">Save Question</button>
+              </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,5 @@
+{
+  "name": "CollabQuiz",
+  "description": "A collaborative study companion app allowing friends to create exam reviewers, study together, and play real-time competitive quiz games.",
+  "requestFramePermissions": []
+}
