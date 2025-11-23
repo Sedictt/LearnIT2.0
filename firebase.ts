@@ -143,5 +143,15 @@ export const dbService = {
       const feedback = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(feedback);
     });
+  },
+  updateUserProfile: async (userId: string, data: any) => {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, data, { merge: true });
+    console.log(`✅ Updated user profile for ${userId}`);
+  },
+  getUserProfile: async (userId: string) => {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 };
