@@ -17,6 +17,8 @@ export const LiveSession: React.FC = () => {
   const [hasJoined, setHasJoined] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [submittedCount, setSubmittedCount] = useState(0);
+  const [totalPlayers, setTotalPlayers] = useState(0);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -29,6 +31,36 @@ export const LiveSession: React.FC = () => {
         if (data.hostId !== uid && !data.players?.[uid] && !hasJoined) {
           joinGame(sessionId, uid, username);
           setHasJoined(true);
+        }
+
+        // Track submission counts
+        const players = Object.values(data.players || {});
+        const submitted = players.filter((p: any) => p.hasSubmitted).length;
+        setSubmittedCount(submitted);
+        setTotalPlayers(players.length);
+        
+        // Auto-reveal when all players have submitted
+        if (data.status === GameStatus.PLAYING && !data.showAnswer && 
+            players.length > 0 && submitted === players.length && submitted > 0) {
+          setTimeout(() => {
+            dbService.updateSession(sessionId, { showAnswer: true });
+          }, 500);
+        }
+        
+        // Auto-advance to next question after 5 seconds of showing answer
+        if (data.status === GameStatus.PLAYING && data.showAnswer && 
+            players.length > 0 && submitted === players.length) {
+          setTimeout(() => {
+            const nextIdx = data.currentQuestionIndex + 1;
+            if (nextIdx < questions.length) {
+              dbService.updateSession(sessionId, { 
+                currentQuestionIndex: nextIdx,
+                showAnswer: false 
+              });
+            } else {
+              dbService.updateSession(sessionId, { status: GameStatus.FINISHED });
+            }
+          }, 5000);
         }
 
         // Fetch questions only once if needed
@@ -45,10 +77,24 @@ export const LiveSession: React.FC = () => {
     return () => unsubSession();
   }, [sessionId, uid, username, hasJoined, questions.length, navigate]);
 
-  // Reset local state when question changes
+  // Reset submission states for all players when question changes
   useEffect(() => {
+    if (!sessionId || !session) return;
+    
     setSelectedAnswer(null);
     setHasSubmitted(false);
+    
+    // Reset all players' submission status
+    const updates: any = {};
+    Object.keys(session.players || {}).forEach(playerId => {
+      updates[`players.${playerId}.hasSubmitted`] = false;
+      updates[`players.${playerId}.submittedAnswer`] = null;
+      updates[`players.${playerId}.isCorrect`] = null;
+    });
+    
+    if (Object.keys(updates).length > 0) {
+      dbService.updateSession(sessionId, updates);
+    }
   }, [session?.currentQuestionIndex]);
 
   const joinGame = async (sid: string, pid: string, pname: string) => {
@@ -78,26 +124,28 @@ export const LiveSession: React.FC = () => {
     await dbService.updateSession(sessionId, { showAnswer: true });
   };
 
-  const submitAnswer = async (answer: string) => {
-    if (!sessionId || hasSubmitted || session?.showAnswer) return;
+  const submitAnswer = async () => {
+    if (!sessionId || !selectedAnswer || hasSubmitted || session?.showAnswer) return;
     
-    setSelectedAnswer(answer);
     setHasSubmitted(true);
     
     const currentQ = questions[session!.currentQuestionIndex];
-    const isCorrect = answer === currentQ.answer; // Simplified string match
+    const isCorrect = selectedAnswer === currentQ.answer;
 
+    // Update player submission status and answer
+    const updates: any = {
+      [`players.${uid}.hasSubmitted`]: true,
+      [`players.${uid}.submittedAnswer`]: selectedAnswer,
+      [`players.${uid}.isCorrect`]: isCorrect
+    };
+    
+    // Award points if correct
     if (isCorrect) {
-        // Increment score directly in Firestore
-        // Note: For robust app, use Firestore transactions. Here using simple update logic for prototype.
-        // We read current score from local session state to be fast, but ideally use atomic increment
-        // Since we can't easily do deep map update increment without 'dot notation' which requires the key known
-        const playerRef = `players.${uid}.score`;
-        const currentScore = session?.players[uid]?.score || 0;
-        await dbService.updateSession(sessionId, { 
-            [playerRef]: currentScore + 100 
-        });
+      const currentScore = session?.players[uid]?.score || 0;
+      updates[`players.${uid}.score`] = currentScore + 100;
     }
+    
+    await dbService.updateSession(sessionId, updates);
   };
 
   if (loading) return <div className="flex h-screen items-center justify-center text-indigo-600 font-bold">Connecting...</div>;
@@ -182,28 +230,94 @@ export const LiveSession: React.FC = () => {
   // ---------------- PLAYING VIEW ----------------
   if (!currentQ) return <div>Loading Question...</div>;
 
+  const sortedPlayers = Object.values(session.players || {}).sort((a: any, b: any) => b.score - a.score);
+
   return (
-    <div className="max-w-4xl mx-auto py-8">
-        <div className="flex justify-between items-center mb-6 px-4">
-            <div className="bg-white px-4 py-2 rounded-full shadow-sm text-sm font-bold text-slate-600 border border-slate-200">
-                Question {session.currentQuestionIndex + 1} / {questions.length}
+    <div className="flex gap-6 py-8 px-4 max-w-7xl mx-auto">
+        {/* Live Ranking Sidebar */}
+        <div className="hidden lg:block w-64 flex-shrink-0">
+            <div className="sticky top-8 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <Trophy size={20} />
+                        Live Rankings
+                    </h3>
+                </div>
+                <div className="p-4 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
+                    {sortedPlayers.map((player: any, idx) => (
+                        <div 
+                            key={player.id} 
+                            className={`flex items-center justify-between p-3 rounded-lg transition-all ${
+                                player.id === uid 
+                                    ? 'bg-indigo-50 border-2 border-indigo-300 scale-105' 
+                                    : idx === 0 
+                                    ? 'bg-yellow-50 border border-yellow-200' 
+                                    : 'bg-slate-50 border border-slate-100'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-xs ${
+                                    idx === 0 ? 'bg-yellow-400 text-yellow-900' : 
+                                    idx === 1 ? 'bg-slate-300 text-slate-700' :
+                                    idx === 2 ? 'bg-amber-600 text-white' :
+                                    'bg-slate-200 text-slate-600'
+                                }`}>
+                                    {idx + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-slate-800 text-sm truncate">
+                                        {player.name}
+                                        {player.id === uid && <span className="text-indigo-600 ml-1">(You)</span>}
+                                    </div>
+                                    {player.hasSubmitted && !session.showAnswer && (
+                                        <div className="text-xs text-emerald-600 font-medium">✓ Submitted</div>
+                                    )}
+                                    {session.showAnswer && player.isCorrect !== undefined && (
+                                        <div className={`text-xs font-bold ${player.isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {player.isCorrect ? '✓ Correct' : '✗ Wrong'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="font-mono font-bold text-indigo-600 text-sm">
+                                {player.score}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
-            {!isHost && (
+        </div>
+
+        {/* Main Game Area */}
+        <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-center mb-6">
+                <div className="bg-white px-4 py-2 rounded-full shadow-sm text-sm font-bold text-slate-600 border border-slate-200">
+                    Question {session.currentQuestionIndex + 1} / {questions.length}
+                </div>
                 <div className="bg-indigo-600 px-4 py-2 rounded-full shadow-sm text-sm font-bold text-white flex items-center gap-2">
                     <Trophy size={14} /> {session.players[uid]?.score || 0} pts
                 </div>
-            )}
-        </div>
+            </div>
 
-        {/* Question Card */}
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden min-h-[400px] flex flex-col border border-slate-100">
+            {/* Question Card */}
+            <div className="bg-white rounded-3xl shadow-xl overflow-hidden min-h-[400px] flex flex-col border border-slate-100">
             <div className="bg-slate-50 p-8 border-b border-slate-100">
                 <h2 className="text-2xl md:text-3xl font-bold text-slate-800 leading-tight text-center">{currentQ.question}</h2>
             </div>
 
             <div className="p-8 flex-grow flex flex-col justify-center">
                 {currentQ.type === 'MULTIPLE_CHOICE' && currentQ.options ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <>
+                    {/* Countdown message when all submitted */}
+                    {!session.showAnswer && submittedCount === totalPlayers && totalPlayers > 0 && (
+                        <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-center">
+                            <p className="text-indigo-700 font-bold animate-pulse">
+                                🎯 All players submitted! Revealing answer...
+                            </p>
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                         {currentQ.options.map((opt, idx) => {
                             let stateClass = "bg-white border-slate-200 text-slate-600 hover:bg-slate-50";
                             if (session.showAnswer) {
@@ -217,15 +331,33 @@ export const LiveSession: React.FC = () => {
                             return (
                                 <button
                                     key={idx}
-                                    onClick={() => !isHost && submitAnswer(opt)}
-                                    disabled={hasSubmitted || session.showAnswer || isHost}
-                                    className={`p-6 rounded-2xl border-2 text-lg font-bold transition-all duration-200 ${stateClass}`}
+                                    onClick={() => !hasSubmitted && setSelectedAnswer(opt)}
+                                    disabled={hasSubmitted || session.showAnswer}
+                                    className={`p-6 rounded-2xl border-2 text-lg font-bold transition-all duration-200 ${stateClass} ${!hasSubmitted && !session.showAnswer ? 'cursor-pointer' : 'cursor-default'}`}
                                 >
                                     {opt}
                                 </button>
                             );
                         })}
                     </div>
+                    
+                    {/* Submit Button and Status */}
+                    {!session.showAnswer && (
+                        <div className="flex flex-col items-center gap-3">
+                            <button
+                                onClick={submitAnswer}
+                                disabled={!selectedAnswer || hasSubmitted}
+                                className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                            >
+                                {hasSubmitted ? '✓ Submitted' : 'Submit Answer'}
+                            </button>
+                            <p className="text-sm text-slate-500">
+                                {submittedCount} / {totalPlayers} players submitted
+                                {isHost && <span className="ml-2 text-indigo-600 font-bold">(You're the host)</span>}
+                            </p>
+                        </div>
+                    )}
+                    </>
                 ) : (
                     <div className="text-center">
                         <p className="text-slate-400 italic mb-4">Text input answers not fully supported in prototype mode.</p>
@@ -235,52 +367,36 @@ export const LiveSession: React.FC = () => {
                     </div>
                 )}
             </div>
-
-            {/* Host Controls */}
-            {isHost && (
-                <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
-                    <span className="font-mono text-sm text-slate-400 ml-4">HOST CONTROLS</span>
-                    <div className="flex gap-4">
-                        {!session.showAnswer ? (
-                            <button 
-                                onClick={revealAnswer}
-                                className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 rounded-lg font-bold transition"
-                            >
-                                Reveal Answer
-                            </button>
-                        ) : (
-                            <button 
-                                onClick={nextQuestion}
-                                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg font-bold transition flex items-center gap-2"
-                            >
-                                Next Question <ChevronRight size={16} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
         </div>
 
-        {/* Live Leaderboard (Small) */}
-        {session.showAnswer && (
-             <div className="mt-8 bg-white/50 backdrop-blur rounded-2xl p-6 border border-white/50">
-                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Live Standings</h3>
-                 <div className="flex gap-4 overflow-x-auto pb-2">
-                     {Object.values(session.players || {})
-                        .sort((a: any, b: any) => b.score - a.score)
-                        .slice(0, 5)
-                        .map((p: any, i) => (
-                         <div key={p.id} className="flex-shrink-0 flex flex-col items-center w-20">
-                             <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs mb-1">
-                                 {i + 1}
-                             </div>
-                             <span className="text-xs font-bold text-slate-800 truncate w-full text-center">{p.name}</span>
-                             <span className="text-xs text-indigo-600 font-mono">{p.score}</span>
-                         </div>
-                     ))}
-                 </div>
-             </div>
-        )}
+        {/* Mobile Rankings - Show at bottom on small screens */}
+        <div className="lg:hidden mt-6 bg-white rounded-2xl p-4 border border-slate-200 shadow-lg">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Trophy size={16} />
+                Live Rankings
+            </h3>
+            <div className="space-y-2">
+                {sortedPlayers.map((p: any, i) => (
+                    <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg ${
+                        p.id === uid ? 'bg-indigo-50 border border-indigo-200' :
+                        i === 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-slate-50'
+                    }`}>
+                        <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                                i === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                                {i + 1}
+                            </div>
+                            <span className="font-bold text-sm text-slate-800">
+                                {p.name} {p.id === uid && '(You)'}
+                            </span>
+                        </div>
+                        <span className="font-mono font-bold text-indigo-600 text-sm">{p.score}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+        </div>
     </div>
   );
 };

@@ -20,11 +20,14 @@ export const DeckView: React.FC = () => {
   const [qText, setQText] = useState('');
   const [qOptions, setQOptions] = useState<string[]>(['', '', '', '']);
   const [qAnswer, setQAnswer] = useState('');
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
   // Solo Review State
   const [reviewMode, setReviewMode] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -37,7 +40,10 @@ export const DeckView: React.FC = () => {
   }, [id]);
 
   const handleAddQuestion = async () => {
-    if (!id || !qText || !qAnswer) return;
+    if (!id || !qText || !qAnswer) {
+      alert("Please fill in all required fields");
+      return;
+    }
     
     // Simple validation
     if (qType === QuestionType.MULTIPLE_CHOICE && qOptions.some(o => !o.trim())) {
@@ -45,7 +51,7 @@ export const DeckView: React.FC = () => {
       return;
     }
 
-    const newQ = {
+    const questionData = {
       type: qType,
       question: qText,
       options: qType === QuestionType.MULTIPLE_CHOICE ? qOptions : undefined,
@@ -53,9 +59,19 @@ export const DeckView: React.FC = () => {
       author: localStorage.getItem('collab_username') || 'Anonymous'
     };
 
-    await dbService.addQuestion(id, newQ);
-    resetForm();
-    setShowAddModal(false);
+    try {
+      if (editingQuestion) {
+        await dbService.updateQuestion(id, editingQuestion.id, questionData);
+      } else {
+        await dbService.addQuestion(id, questionData);
+      }
+      resetForm();
+      setShowAddModal(false);
+      setEditingQuestion(null);
+    } catch (error) {
+      console.error('Error saving question:', error);
+      alert('Failed to save question');
+    }
   };
 
   const handleGenerateAI = async () => {
@@ -85,6 +101,28 @@ export const DeckView: React.FC = () => {
     setQText('');
     setQOptions(['', '', '', '']);
     setQAnswer('');
+    setQType(QuestionType.MULTIPLE_CHOICE);
+    setEditingQuestion(null);
+  };
+
+  const handleEditQuestion = (q: Question) => {
+    setEditingQuestion(q);
+    setQType(q.type);
+    setQText(q.question);
+    setQOptions(q.options || ['', '', '', '']);
+    setQAnswer(q.answer as string);
+    setShowAddModal(true);
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!id) return;
+    if (!confirm('Are you sure you want to delete this question?')) return;
+    try {
+      await dbService.deleteQuestion(id, questionId);
+    } catch (error) {
+      console.error('Error deleting question:', error);
+      alert('Failed to delete question');
+    }
   };
 
   if (loading) return <div className="p-12 text-center text-slate-500">Loading...</div>;
@@ -93,11 +131,38 @@ export const DeckView: React.FC = () => {
   // Render Solo Review Mode
   if (reviewMode) {
     const currentQ = questions[currentReviewIndex];
+    
+    const handleAnswerSelect = (answer: string) => {
+      setSelectedAnswer(answer);
+      setIsCorrect(answer === currentQ.answer);
+      setShowAnswer(true);
+    };
+    
+    const handleNext = () => {
+      if (currentReviewIndex < questions.length - 1) {
+        setCurrentReviewIndex(prev => prev + 1);
+        setShowAnswer(false);
+        setSelectedAnswer(null);
+        setIsCorrect(null);
+      } else {
+        setReviewMode(false);
+        setCurrentReviewIndex(0);
+        setShowAnswer(false);
+        setSelectedAnswer(null);
+        setIsCorrect(null);
+      }
+    };
+    
     return (
       <div className="max-w-2xl mx-auto py-12">
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-slate-700">Reviewing {currentReviewIndex + 1} / {questions.length}</h2>
-            <button onClick={() => setReviewMode(false)} className="text-sm font-medium text-slate-500 hover:text-slate-800">Exit Review</button>
+            <button onClick={() => {
+              setReviewMode(false);
+              setShowAnswer(false);
+              setSelectedAnswer(null);
+              setIsCorrect(null);
+            }} className="text-sm font-medium text-slate-500 hover:text-slate-800">Exit Review</button>
         </div>
         
         <div className="bg-white rounded-3xl shadow-xl p-8 min-h-[400px] flex flex-col justify-between relative overflow-hidden">
@@ -111,38 +176,82 @@ export const DeckView: React.FC = () => {
                 </span>
                 <h3 className="text-2xl font-bold text-slate-900 leading-snug">{currentQ.question}</h3>
                 
-                {showAnswer ? (
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 bg-emerald-50 border border-emerald-100 p-6 rounded-xl">
+                {/* Show options for multiple choice */}
+                {currentQ.type === QuestionType.MULTIPLE_CHOICE && currentQ.options && (
+                    <div className="space-y-3 mt-6">
+                        {currentQ.options.map((opt, idx) => {
+                          const isSelected = selectedAnswer === opt;
+                          const isCorrectAnswer = opt === currentQ.answer;
+                          const showResult = showAnswer && isSelected;
+                          
+                          return (
+                            <button 
+                                key={idx}
+                                onClick={() => !showAnswer && handleAnswerSelect(opt)}
+                                disabled={showAnswer}
+                                className={`w-full px-4 py-3 rounded-lg border-2 transition text-left ${
+                                    showAnswer && isCorrectAnswer
+                                        ? 'bg-emerald-50 border-emerald-400 text-emerald-800 font-medium' 
+                                        : showResult && !isCorrect
+                                        ? 'bg-red-50 border-red-400 text-red-800 font-medium'
+                                        : isSelected && !showAnswer
+                                        ? 'bg-indigo-50 border-indigo-400 text-indigo-800'
+                                        : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:hover:bg-white disabled:hover:border-slate-200'
+                                } ${!showAnswer ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                                <span className="font-bold mr-2">{String.fromCharCode(65+idx)}.</span>
+                                {opt}
+                                {showAnswer && isCorrectAnswer && (
+                                  <CheckCircle className="inline ml-2 text-emerald-600" size={20} />
+                                )}
+                                {showResult && !isCorrect && (
+                                  <XCircle className="inline ml-2 text-red-600" size={20} />
+                                )}
+                            </button>
+                          );
+                        })}
+                    </div>
+                )}
+                
+                {/* Feedback message */}
+                {showAnswer && isCorrect !== null && (
+                    <div className={`animate-in fade-in slide-in-from-bottom-4 duration-300 p-4 rounded-xl ${
+                      isCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'
+                    }`}>
+                        <p className={`font-bold text-lg ${isCorrect ? 'text-emerald-800' : 'text-red-800'}`}>
+                          {isCorrect ? '✓ Correct!' : '✗ Incorrect'}
+                        </p>
+                        {!isCorrect && (
+                          <p className="text-sm text-red-700 mt-1">
+                            The correct answer is: <span className="font-bold">{currentQ.answer}</span>
+                          </p>
+                        )}
+                    </div>
+                )}
+                
+                {showAnswer && currentQ.type !== QuestionType.MULTIPLE_CHOICE && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 bg-emerald-50 border border-emerald-100 p-6 rounded-xl mt-6">
                         <p className="text-sm font-semibold text-emerald-800 uppercase mb-2">Correct Answer</p>
                         <p className="text-xl font-medium text-emerald-900">{Array.isArray(currentQ.answer) ? currentQ.answer.join(', ') : currentQ.answer}</p>
                     </div>
-                ) : (
-                   <div className="py-12 flex items-center justify-center text-slate-300 italic">
-                      Tap reveal to see answer
-                   </div>
                 )}
             </div>
 
             <div className="mt-8 flex gap-4">
+                {!showAnswer && currentQ.type !== QuestionType.MULTIPLE_CHOICE && (
+                  <button 
+                      onClick={() => setShowAnswer(true)}
+                      className="flex-1 py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 transition"
+                  >
+                      Reveal Answer
+                  </button>
+                )}
                 <button 
-                    onClick={() => setShowAnswer(!showAnswer)}
-                    className="flex-1 py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 transition"
+                    onClick={handleNext}
+                    disabled={!showAnswer}
+                    className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg shadow-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    {showAnswer ? 'Hide Answer' : 'Reveal Answer'}
-                </button>
-                <button 
-                    onClick={() => {
-                        if (currentReviewIndex < questions.length - 1) {
-                            setCurrentReviewIndex(prev => prev + 1);
-                            setShowAnswer(false);
-                        } else {
-                            setReviewMode(false);
-                            setCurrentReviewIndex(0);
-                        }
-                    }}
-                    className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg shadow-slate-200"
-                >
-                    {currentReviewIndex < questions.length - 1 ? 'Next' : 'Finish'}
+                    {currentReviewIndex < questions.length - 1 ? 'Next Question' : 'Finish Review'}
                 </button>
             </div>
         </div>
@@ -226,6 +335,20 @@ export const DeckView: React.FC = () => {
                     </div>
                     <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-xs text-slate-400">
                         <span>Added by {q.author}</span>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                                onClick={() => handleEditQuestion(q)}
+                                className="px-3 py-1 text-indigo-600 hover:bg-indigo-50 rounded font-medium text-xs"
+                            >
+                                Edit
+                            </button>
+                            <button
+                                onClick={() => handleDeleteQuestion(q.id)}
+                                className="px-3 py-1 text-red-600 hover:bg-red-50 rounded font-medium text-xs"
+                            >
+                                Delete
+                            </button>
+                        </div>
                     </div>
                 </div>
             ))
@@ -237,8 +360,8 @@ export const DeckView: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
               <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center rounded-t-2xl">
-                 <h3 className="text-xl font-bold text-slate-800">Add to Reviewer</h3>
-                 <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+                 <h3 className="text-xl font-bold text-slate-800">{editingQuestion ? 'Edit Question' : 'Add to Reviewer'}</h3>
+                 <button onClick={() => { setShowAddModal(false); resetForm(); }} className="text-slate-400 hover:text-slate-600">
                    <span className="text-2xl">&times;</span>
                  </button>
               </div>
@@ -297,19 +420,23 @@ export const DeckView: React.FC = () => {
                              {qOptions.map((opt, idx) => (
                                  <div key={idx} className="flex gap-2">
                                      <button 
-                                        onClick={() => setQAnswer(opt)}
-                                        className={`w-10 flex-shrink-0 flex items-center justify-center rounded-lg border transition ${qAnswer === opt && opt !== '' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-slate-400 hover:border-slate-400'}`}
+                                        type="button"
+                                        onClick={() => setQAnswer(qOptions[idx])}
+                                        className={`w-10 flex-shrink-0 flex items-center justify-center rounded-lg border transition ${qAnswer === qOptions[idx] && qOptions[idx] !== '' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-slate-400 hover:border-slate-400'}`}
                                      >
-                                        {qAnswer === opt && opt !== '' ? <CheckCircle size={18} /> : String.fromCharCode(65+idx)}
+                                        {qAnswer === qOptions[idx] && qOptions[idx] !== '' ? <CheckCircle size={18} /> : String.fromCharCode(65+idx)}
                                      </button>
                                      <input 
                                         value={opt}
                                         onChange={e => {
                                             const newOpts = [...qOptions];
+                                            const oldValue = newOpts[idx];
                                             newOpts[idx] = e.target.value;
                                             setQOptions(newOpts);
-                                            // If this was the answer, update answer text too
-                                            if (qAnswer === opt) setQAnswer(e.target.value);
+                                            // If this option was selected as answer, update answer to new value
+                                            if (qAnswer === oldValue) {
+                                                setQAnswer(e.target.value);
+                                            }
                                         }}
                                         placeholder={`Option ${String.fromCharCode(65+idx)}`}
                                         className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -333,8 +460,8 @@ export const DeckView: React.FC = () => {
                  </div>
               </div>
               <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
-                 <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:text-slate-800">Cancel</button>
-                 <button onClick={handleAddQuestion} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition">Save Question</button>
+                 <button onClick={() => { setShowAddModal(false); resetForm(); }} className="px-5 py-2.5 text-slate-600 font-medium hover:text-slate-800">Cancel</button>
+                 <button onClick={handleAddQuestion} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition">{editingQuestion ? 'Update Question' : 'Save Question'}</button>
               </div>
            </div>
         </div>

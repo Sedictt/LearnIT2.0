@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment } from "firebase/firestore";
+import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = {
@@ -90,6 +90,16 @@ export const dbService = {
       const questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(questions);
     });
+  },
+  updateQuestion: async (deckId: string, questionId: string, questionData: any) => {
+    const questionRef = doc(db, `decks/${deckId}/questions`, questionId);
+    await updateDoc(questionRef, { ...questionData, updatedAt: Date.now() });
+  },
+  deleteQuestion: async (deckId: string, questionId: string) => {
+    const questionRef = doc(db, `decks/${deckId}/questions`, questionId);
+    const deckRef = doc(db, 'decks', deckId);
+    await deleteDoc(questionRef);
+    await updateDoc(deckRef, { questionCount: increment(-1) });
   },
   createSession: async (deckId: string, deckTitle: string, hostId: string) => {
     return addDoc(collection(db, 'sessions'), {

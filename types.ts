@@ -29,7 +29,9 @@ export interface Player {
   id: string;
   name: string;
   score: number;
-  lastAnswer?: any;
+  hasSubmitted?: boolean;
+  submittedAnswer?: string;
+  isCorrect?: boolean;
 }
 
 export enum GameStatus {
