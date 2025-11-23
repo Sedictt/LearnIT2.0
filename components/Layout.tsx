@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom'; // We will use HashRouter in App.tsx
+import { Link, useLocation } from 'react-router-dom';
 import { User, BookOpen, LogOut } from 'lucide-react';
+import { Login } from './Login';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -76,17 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Link>
             
             <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full">
-                <User size={16} className="text-slate-500" />
-                <span className="text-sm font-medium text-slate-700">{username}</span>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition"
-                title="Logout"
-              >
-                <LogOut size={20} />
-              </button>
+              <Login />
             </div>
           </div>
         </div>

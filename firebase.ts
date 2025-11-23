@@ -1,25 +1,47 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment } from "firebase/firestore";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyC3zzWpVHOyXzpdRIcer4SgjsZsPp7Hf6I",
+  authDomain: "learnit-f06cc.firebaseapp.com",
+  projectId: "learnit-f06cc",
+  storageBucket: "learnit-f06cc.firebasestorage.app",
+  messagingSenderId: "25513139492",
+  appId: "1:25513139492:web:a7162d91106b5e238767b1",
+  measurementId: "G-DTSBCRMPGX"
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// Ensure user is signed in anonymously for security rules interaction (if any)
-signInAnonymously(auth).catch((error) => {
-  console.error("Auth Error", error);
-});
+// Google Auth Provider
+const googleProvider = new GoogleAuthProvider();
+
+// Auth Helper Functions
+export const authService = {
+  signInWithGoogle: async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      return result.user;
+    } catch (error) {
+      console.error("Google Sign-In Error:", error);
+      throw error;
+    }
+  },
+  signOut: async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Sign-Out Error:", error);
+      throw error;
+    }
+  },
+  onAuthChange: (callback: (user: any) => void) => {
+    return onAuthStateChanged(auth, callback);
+  }
+};
 
 // Helper for simplified DB access
 export const dbService = {
