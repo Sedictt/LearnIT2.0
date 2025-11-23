@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { DeckView } from './pages/DeckView';
 import { LiveSession } from './pages/LiveSession';
+import { FeedbackView } from './pages/FeedbackView';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/deck/:id" element={<DeckView />} />
           <Route path="/play/:sessionId" element={<LiveSession />} />
+          <Route path="/feedback" element={<FeedbackView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

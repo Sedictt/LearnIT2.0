@@ -133,5 +133,15 @@ export const dbService = {
   },
   updateSession: async (sessionId: string, data: any) => {
     await updateDoc(doc(db, 'sessions', sessionId), data);
+  },
+  submitFeedback: async (data: any) => {
+    return addDoc(collection(db, 'feedback'), { ...data, status: 'pending' });
+  },
+  getFeedback: (callback: (feedback: any[]) => void) => {
+    const q = query(collection(db, 'feedback'), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      const feedback = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      callback(feedback);
+    });
   }
 };

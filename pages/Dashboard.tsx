@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Book, Calendar, Users, Gamepad2, ArrowRight } from 'lucide-react';
+import { Plus, Book, Calendar, Users, Gamepad2, ArrowRight, Bug, MessageSquare } from 'lucide-react';
 import { dbService } from '../firebase';
 import { Deck } from '../types';
 
@@ -10,6 +10,14 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState('');
   const navigate = useNavigate();
+  
+  // Feedback modal states
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<'bug' | 'feedback'>('feedback');
+  const [feedbackTitle, setFeedbackTitle] = useState('');
+  const [feedbackDescription, setFeedbackDescription] = useState('');
+  const [feedbackEmail, setFeedbackEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const unsubscribe = dbService.getDecks((data) => {
@@ -49,6 +57,43 @@ export const Dashboard: React.FC = () => {
     e.preventDefault();
     if(joinCode.trim()) {
       navigate(`/play/${joinCode.trim()}`);
+    }
+  };
+
+  const openFeedbackModal = (type: 'bug' | 'feedback') => {
+    setFeedbackType(type);
+    setFeedbackTitle('');
+    setFeedbackDescription('');
+    setFeedbackEmail('');
+    setShowFeedbackModal(true);
+  };
+
+  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    
+    try {
+      // Save feedback to Firestore
+      await dbService.submitFeedback({
+        type: feedbackType,
+        title: feedbackTitle,
+        description: feedbackDescription,
+        email: feedbackEmail || 'Not provided',
+        username: localStorage.getItem('collab_username') || 'Guest',
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      
+      alert('✅ Thank you for your feedback! We\'ve received your submission and will review it soon.');
+      setShowFeedbackModal(false);
+      setFeedbackTitle('');
+      setFeedbackDescription('');
+      setFeedbackEmail('');
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      alert('❌ Sorry, there was an error submitting your feedback. Please try again later.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -180,6 +225,121 @@ export const Dashboard: React.FC = () => {
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium">Cancel</button>
                 <button type="submit" className="flex-1 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-bold">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Feedback & Bug Report Buttons - Fixed Position */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+        <button
+          onClick={() => openFeedbackModal('feedback')}
+          className="group flex items-center gap-2 bg-white hover:bg-indigo-50 text-indigo-600 px-4 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 border border-indigo-100"
+          title="Send Feedback"
+        >
+          <MessageSquare size={20} className="group-hover:scale-110 transition-transform" />
+          <span className="font-medium text-sm hidden md:inline">Feedback</span>
+        </button>
+        <button
+          onClick={() => openFeedbackModal('bug')}
+          className="group flex items-center gap-2 bg-white hover:bg-red-50 text-red-600 px-4 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 border border-red-100"
+          title="Report a Bug"
+        >
+          <Bug size={20} className="group-hover:scale-110 transition-transform" />
+          <span className="font-medium text-sm hidden md:inline">Report Bug</span>
+        </button>
+      </div>
+
+      {/* Feedback/Bug Report Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className={`p-6 border-b border-slate-100 flex justify-between items-center ${
+              feedbackType === 'bug' ? 'bg-red-50' : 'bg-indigo-50'
+            }`}>
+              <div className="flex items-center gap-3">
+                {feedbackType === 'bug' ? (
+                  <>
+                    <Bug size={24} className="text-red-600" />
+                    <h3 className="text-xl font-bold text-slate-800">Report a Bug</h3>
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare size={24} className="text-indigo-600" />
+                    <h3 className="text-xl font-bold text-slate-800">Send Feedback</h3>
+                  </>
+                )}
+              </div>
+              <button onClick={() => setShowFeedbackModal(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="text-2xl">&times;</span>
+              </button>
+            </div>
+            
+            <form onSubmit={handleFeedbackSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {feedbackType === 'bug' ? 'Bug Title' : 'Feedback Title'} <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  value={feedbackTitle}
+                  onChange={(e) => setFeedbackTitle(e.target.value)}
+                  required 
+                  placeholder={feedbackType === 'bug' ? 'Brief description of the bug' : 'What would you like to share?'}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {feedbackType === 'bug' ? 'What happened?' : 'Tell us more'} <span className="text-red-500">*</span>
+                </label>
+                <textarea 
+                  value={feedbackDescription}
+                  onChange={(e) => setFeedbackDescription(e.target.value)}
+                  required
+                  rows={5}
+                  placeholder={feedbackType === 'bug' 
+                    ? 'Please describe the bug in detail. What were you doing when it occurred? What did you expect to happen?' 
+                    : 'Share your thoughts, suggestions, or ideas to help us improve!'}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Email (optional)
+                </label>
+                <input 
+                  type="email"
+                  value={feedbackEmail}
+                  onChange={(e) => setFeedbackEmail(e.target.value)}
+                  placeholder="your.email@example.com"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                />
+                <p className="text-xs text-slate-500 mt-1">We'll use this to follow up if needed</p>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setShowFeedbackModal(false)} 
+                  className="flex-1 px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium"
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className={`flex-1 px-4 py-2 text-white rounded-lg font-bold transition ${
+                    feedbackType === 'bug' 
+                      ? 'bg-red-600 hover:bg-red-700' 
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Submitting...' : 'Submit'}
+                </button>
               </div>
             </form>
           </div>

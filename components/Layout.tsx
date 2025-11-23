@@ -50,7 +50,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-indigo-600 mb-2">CollabQuiz</h1>
+            <h1 className="text-3xl font-bold text-indigo-600 mb-2">LearnIT</h1>
             <p className="text-slate-500">Study together, win together.</p>
           </div>
           
@@ -99,10 +99,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex justify-between h-16 items-center">
             <Link to="/" className="flex items-center gap-2 group">
               <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold group-hover:scale-110 transition-transform">
-                Q
+                L
               </div>
               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">
-                CollabQuiz
+                LearnIT
               </span>
             </Link>
             
