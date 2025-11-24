@@ -98,10 +98,20 @@ export const dbService = {
   },
   getQuestions: (deckId: string, callback: (questions: any[]) => void) => {
     const q = query(collection(db, `decks/${deckId}/questions`), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snapshot) => {
-      const questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      callback(questions);
-    });
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(questions);
+      },
+      (error) => {
+        console.error('❌ Failed to load questions:', error);
+        if (error.code === 'permission-denied') {
+          console.warn('Questions read blocked by Firestore rules.');
+        }
+        callback([]);
+      }
+    );
   },
   updateQuestion: async (deckId: string, questionId: string, questionData: any) => {
     const questionRef = doc(db, `decks/${deckId}/questions`, questionId);
