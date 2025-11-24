@@ -151,10 +151,20 @@ export const dbService = {
   },
   getFeedback: (callback: (feedback: any[]) => void) => {
     const q = query(collection(db, 'feedback'), orderBy('timestamp', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      const feedback = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      callback(feedback);
-    });
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const feedback = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(feedback);
+      },
+      (error) => {
+        console.error('❌ Failed to load feedback:', error);
+        if (error.code === 'permission-denied') {
+          console.warn('Feedback read blocked by Firestore rules. User may be unauthenticated.');
+        }
+        callback([]);
+      }
+    );
   },
   updateUserProfile: async (userId: string, data: any) => {
     await setDoc(doc(db, 'users', userId), data, { merge: true });

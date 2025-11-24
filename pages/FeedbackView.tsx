@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dbService } from '../firebase';
+import { dbService, auth } from '../firebase';
 import { Bug, MessageSquare, Mail, User, Calendar, ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
 
 interface FeedbackItem {
@@ -22,6 +22,12 @@ export const FeedbackView: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      // Not authenticated; skip subscribing and show info
+      setLoading(false);
+      return;
+    }
     const unsubscribe = dbService.getFeedback((data) => {
       setFeedbacks(data);
       setLoading(false);
@@ -48,6 +54,14 @@ export const FeedbackView: React.FC = () => {
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Feedback & Bug Reports</h1>
           <p className="text-slate-600">View and manage all user submissions</p>
         </div>
+
+        {!auth.currentUser && (
+          <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-700">
+              You must be signed in to view feedback submissions. Please log in with Google or Facebook.
+            </p>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
