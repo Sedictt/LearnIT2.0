@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc } from "firebase/firestore";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
@@ -20,8 +20,9 @@ export const storage = getStorage(app);
 
 console.log("✅ Firebase initialized successfully");
 
-// Google Auth Provider
+// Auth Providers
 const googleProvider = new GoogleAuthProvider();
+const facebookProvider = new FacebookAuthProvider();
 
 // Auth Helper Functions
 export const authService = {
@@ -31,6 +32,15 @@ export const authService = {
       return result.user;
     } catch (error) {
       console.error("Google Sign-In Error:", error);
+      throw error;
+    }
+  },
+  signInWithFacebook: async () => {
+    try {
+      const result = await signInWithPopup(auth, facebookProvider);
+      return result.user;
+    } catch (error) {
+      console.error("Facebook Sign-In Error:", error);
       throw error;
     }
   },
