@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC3zzWpVHOyXzpdRIcer4SgjsZsPp7Hf6I",
@@ -15,6 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 console.log("✅ Firebase initialized successfully");
 
@@ -145,13 +147,35 @@ export const dbService = {
     });
   },
   updateUserProfile: async (userId: string, data: any) => {
-    const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, data, { merge: true });
-    console.log(`✅ Updated user profile for ${userId}`);
+    await setDoc(doc(db, 'users', userId), data, { merge: true });
   },
   getUserProfile: async (userId: string) => {
-    const userRef = doc(db, 'users', userId);
-    const snap = await getDoc(userRef);
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    const docSnap = await getDoc(doc(db, 'users', userId));
+    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+  }
+};
+
+// Storage Helper Functions
+export const storageService = {
+  uploadProfilePicture: async (userId: string, file: File) => {
+    try {
+      const fileExtension = file.name.split('.').pop();
+      const timestamp = Date.now();
+      const fileName = `profile_${userId}_${timestamp}.${fileExtension}`;
+      const storageRef = ref(storage, `uploads/${fileName}`);
+      
+      console.log('📤 Uploading to:', `uploads/${fileName}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      console.log('✅ Upload successful:', snapshot.metadata.fullPath);
+      
+      const downloadURL = await getDownloadURL(storageRef);
+      console.log('🔗 Download URL:', downloadURL);
+      return downloadURL;
+    } catch (error: any) {
+      console.error('❌ Storage upload error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      throw error;
+    }
   }
 };

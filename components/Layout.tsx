@@ -10,6 +10,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [username, setUsername] = useState<string | null>(localStorage.getItem('collab_username'));
+  const [photoURL, setPhotoURL] = useState<string | null>(localStorage.getItem('collab_photoURL'));
   const [user, setUser] = useState<any>(null);
   const location = useLocation();
 
@@ -18,10 +19,30 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       setUser(currentUser);
       if (currentUser) {
         setUsername(currentUser.displayName || currentUser.email);
+        // Load custom photo from Firestore instead of Google photo
+        import('../firebase').then(({ dbService }) => {
+          dbService.getUserProfile(currentUser.uid).then((profile: any) => {
+            if (profile?.photoURL) {
+              setPhotoURL(profile.photoURL);
+            } else {
+              setPhotoURL(currentUser.photoURL);
+            }
+          }).catch(() => {
+            setPhotoURL(currentUser.photoURL);
+          });
+        });
       }
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    // Update from localStorage for guest users
+    const guestPhoto = localStorage.getItem('collab_photoURL');
+    if (!user && guestPhoto) {
+      setPhotoURL(guestPhoto);
+    }
+  }, [user]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,11 +130,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center gap-4">
               <Link 
                 to="/profile"
-                className="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-indigo-50 rounded-full transition group"
-                title="Edit Profile"
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full hover:bg-slate-200 transition cursor-pointer"
               >
-                <User size={16} className="text-slate-500 group-hover:text-indigo-600" />
-                <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-600">{username}</span>
+                {photoURL ? (
+                  <img 
+                    src={photoURL} 
+                    alt={username || 'User'} 
+                    className="w-6 h-6 rounded-full object-cover"
+                  />
+                ) : (
+                  <User size={16} className="text-slate-500" />
+                )}
+                <span className="text-sm font-medium text-slate-700">{username}</span>
               </Link>
               <button 
                 onClick={handleLogout}
