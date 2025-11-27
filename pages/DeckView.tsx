@@ -51,13 +51,16 @@ export const DeckView: React.FC = () => {
       return;
     }
 
-    const questionData = {
+    const questionData: any = {
       type: qType,
       question: qText,
-      options: qType === QuestionType.MULTIPLE_CHOICE ? qOptions : undefined,
       answer: qAnswer,
       author: localStorage.getItem('collab_username') || 'Anonymous'
     };
+
+    if (qType === QuestionType.MULTIPLE_CHOICE) {
+      questionData.options = qOptions;
+    }
 
     try {
       if (editingQuestion) {
