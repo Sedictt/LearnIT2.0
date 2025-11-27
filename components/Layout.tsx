@@ -18,14 +18,25 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const unsubscribe = authService.onAuthChange((currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // Sync Google Auth to LocalStorage for compatibility with DeckView
+        localStorage.setItem('collab_uid', currentUser.uid);
+        if (currentUser.displayName) localStorage.setItem('collab_username', currentUser.displayName);
+        if (currentUser.photoURL) localStorage.setItem('collab_photoURL', currentUser.photoURL);
+
         setUsername(currentUser.displayName || currentUser.email);
         // Load custom photo from Firestore instead of Google photo
         import('../firebase').then(({ dbService }) => {
           dbService.getUserProfile(currentUser.uid).then((profile: any) => {
             if (profile?.photoURL) {
               setPhotoURL(profile.photoURL);
+              localStorage.setItem('collab_photoURL', profile.photoURL);
             } else {
               setPhotoURL(currentUser.photoURL);
+            }
+            // Also sync display name if it exists in profile
+            if (profile?.displayName) {
+              setUsername(profile.displayName);
+              localStorage.setItem('collab_username', profile.displayName);
             }
           }).catch(() => {
             setPhotoURL(currentUser.photoURL);
@@ -42,7 +53,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (!user && guestPhoto) {
       setPhotoURL(guestPhoto);
     }
-  }, [user]);
+
+    // Ensure UID exists for guest users
+    if (!user && username && !localStorage.getItem('collab_uid')) {
+      const newUid = 'guest_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('collab_uid', newUid);
+      console.log('REPAIRED: Generated missing guest UID:', newUid);
+    }
+  }, [user, username]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +78,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleLogout = () => {
     localStorage.removeItem('collab_username');
+    localStorage.removeItem('collab_uid');
+    localStorage.removeItem('collab_photoURL');
     setUsername(null);
     if (user) {
       authService.signOut();
@@ -74,12 +94,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <h1 className="text-3xl font-bold text-indigo-600 mb-2">LearnIT</h1>
             <p className="text-slate-500">Study together, win together.</p>
           </div>
-          
+
           {/* Google Sign In */}
           <div className="mb-6">
             <Login />
           </div>
-          
+
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-300"></div>
@@ -88,19 +108,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span className="px-2 bg-white text-slate-500">or continue as guest</span>
             </div>
           </div>
-          
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">What should we call you?</label>
-              <input 
+              <input
                 name="username"
-                type="text" 
+                type="text"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                 placeholder="Enter your name"
                 required
               />
             </div>
-            <button 
+            <button
               type="submit"
               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200"
             >
@@ -126,16 +146,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 LearnIT
               </span>
             </Link>
-            
+
             <div className="flex items-center gap-4">
-              <Link 
+              <Link
                 to="/profile"
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full hover:bg-slate-200 transition cursor-pointer"
               >
                 {photoURL ? (
-                  <img 
-                    src={photoURL} 
-                    alt={username || 'User'} 
+                  <img
+                    src={photoURL}
+                    alt={username || 'User'}
                     className="w-6 h-6 rounded-full object-cover"
                   />
                 ) : (
@@ -143,7 +163,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 )}
                 <span className="text-sm font-medium text-slate-700">{username}</span>
               </Link>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition"
                 title="Logout"

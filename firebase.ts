@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc, limit } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -182,6 +182,36 @@ export const dbService = {
   getUserProfile: async (userId: string) => {
     const docSnap = await getDoc(doc(db, 'users', userId));
     return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+  },
+  incrementUserScore: async (userId: string) => {
+    const userRef = doc(db, 'users', userId);
+    const username = localStorage.getItem('collab_username') || 'Anonymous';
+    const photoURL = localStorage.getItem('collab_photoURL');
+
+    try {
+      await setDoc(userRef, {
+        totalCorrectAnswers: increment(1),
+        lastActive: Date.now(),
+        username: username,
+        ...(photoURL && { photoURL })
+      }, { merge: true });
+      console.log(`✅ Score incremented for ${username} (${userId})`);
+    } catch (error) {
+      console.error("Error updating user score:", error);
+      alert("Failed to update score. Check console for details.");
+    }
+  },
+  getLeaderboard: (limitCount: number, callback: (users: any[]) => void) => {
+    const q = query(
+      collection(db, 'users'),
+      orderBy('totalCorrectAnswers', 'desc'),
+      limit(limitCount)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log('🏆 Leaderboard updated:', users);
+      callback(users);
+    });
   }
 };
 
@@ -193,11 +223,11 @@ export const storageService = {
       const timestamp = Date.now();
       const fileName = `profile_${userId}_${timestamp}.${fileExtension}`;
       const storageRef = ref(storage, `uploads/${fileName}`);
-      
+
       console.log('📤 Uploading to:', `uploads/${fileName}`);
       const snapshot = await uploadBytes(storageRef, file);
       console.log('✅ Upload successful:', snapshot.metadata.fullPath);
-      
+
       const downloadURL = await getDownloadURL(storageRef);
       console.log('🔗 Download URL:', downloadURL);
       return downloadURL;

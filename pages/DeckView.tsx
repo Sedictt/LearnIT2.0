@@ -29,6 +29,7 @@ export const DeckView: React.FC = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [userTextInput, setUserTextInput] = useState('');
+  const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -138,8 +139,22 @@ export const DeckView: React.FC = () => {
 
     const handleAnswerSelect = (answer: string) => {
       setSelectedAnswer(answer);
-      setIsCorrect(answer === currentQ.answer);
+      const correct = answer === currentQ.answer;
+      setIsCorrect(correct);
       setShowAnswer(true);
+
+      if (correct) {
+        const uid = localStorage.getItem('collab_uid');
+        console.log('Attempting to update score for UID:', uid);
+        if (uid) {
+          dbService.incrementUserScore(uid);
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 2000);
+        } else {
+          console.error('No user ID found in localStorage');
+          alert("Error: User ID not found. Please refresh the page.");
+        }
+      }
     };
 
     const handleNext = () => {
@@ -173,6 +188,19 @@ export const DeckView: React.FC = () => {
       }
       setIsCorrect(correct);
       setShowAnswer(true);
+
+      if (correct) {
+        const uid = localStorage.getItem('collab_uid');
+        console.log('Attempting to update score for UID:', uid);
+        if (uid) {
+          dbService.incrementUserScore(uid);
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 2000);
+        } else {
+          console.error('No user ID found in localStorage');
+          alert("Error: User ID not found. Please refresh the page.");
+        }
+      }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -218,12 +246,12 @@ export const DeckView: React.FC = () => {
                       onClick={() => !showAnswer && handleAnswerSelect(opt)}
                       disabled={showAnswer}
                       className={`w-full px-4 py-3 rounded-lg border-2 transition text-left ${showAnswer && isCorrectAnswer
-                          ? 'bg-emerald-50 border-emerald-400 text-emerald-800 font-medium'
-                          : showResult && !isCorrect
-                            ? 'bg-red-50 border-red-400 text-red-800 font-medium'
-                            : isSelected && !showAnswer
-                              ? 'bg-indigo-50 border-indigo-400 text-indigo-800'
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:hover:bg-white disabled:hover:border-slate-200'
+                        ? 'bg-emerald-50 border-emerald-400 text-emerald-800 font-medium'
+                        : showResult && !isCorrect
+                          ? 'bg-red-50 border-red-400 text-red-800 font-medium'
+                          : isSelected && !showAnswer
+                            ? 'bg-indigo-50 border-indigo-400 text-indigo-800'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:hover:bg-white disabled:hover:border-slate-200'
                         } ${!showAnswer ? 'cursor-pointer' : 'cursor-default'}`}
                     >
                       <span className="font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
@@ -251,10 +279,10 @@ export const DeckView: React.FC = () => {
                   disabled={showAnswer}
                   placeholder="Type your answer here..."
                   className={`w-full px-4 py-3 rounded-xl border-2 outline-none transition ${showAnswer
-                      ? isCorrect
-                        ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
-                        : 'bg-red-50 border-red-400 text-red-800'
-                      : 'bg-white border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'
+                    ? isCorrect
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
+                      : 'bg-red-50 border-red-400 text-red-800'
+                    : 'bg-white border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'
                     }`}
                 />
               </div>
@@ -309,6 +337,14 @@ export const DeckView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-4 fade-in duration-300 z-50">
+            <span className="text-yellow-400 font-bold">+1</span>
+            <span className="font-medium">Point added to leaderboard!</span>
+          </div>
+        )}
       </div>
     );
   }
