@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Camera, Save, ArrowLeft, Loader } from 'lucide-react';
+import { User, Camera, Save, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { auth, dbService, storageService } from '../firebase';
 
 export const Profile: React.FC = () => {
@@ -15,6 +15,7 @@ export const Profile: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+  const [recalculating, setRecalculating] = useState(false);
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -85,6 +86,27 @@ export const Profile: React.FC = () => {
       setError('Failed to upload profile picture. Please try again.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRecalculateContributions = async () => {
+    setRecalculating(true);
+    try {
+      const userId = user?.uid || localStorage.getItem('collab_uid');
+      const username = displayName || localStorage.getItem('collab_username');
+
+      if (userId && username) {
+        const count = await dbService.recalculateUserContributions(userId, username);
+        setSuccess(`Recalculated! You have contributed ${count} questions.`);
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError('Cannot identify user for recalculation.');
+      }
+    } catch (error) {
+      console.error('Recalculation error:', error);
+      setError('Failed to recalculate contributions.');
+    } finally {
+      setRecalculating(false);
     }
   };
 
@@ -269,6 +291,22 @@ export const Profile: React.FC = () => {
             ) : (
               <span className="text-amber-600">Guest User</span>
             )}
+          </p>
+        </div>
+
+        {/* Account Actions */}
+        <div className="mb-8 p-4 bg-slate-50 rounded-lg">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Account Actions</h3>
+          <button
+            onClick={handleRecalculateContributions}
+            disabled={recalculating}
+            className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 text-sm font-medium transition disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={recalculating ? 'animate-spin' : ''} />
+            {recalculating ? 'Recalculating...' : 'Sync Previous Contributions'}
+          </button>
+          <p className="text-xs text-slate-500 mt-1">
+            Click this if your contribution score on the leaderboard seems incorrect. It will recount all questions you've authored.
           </p>
         </div>
 

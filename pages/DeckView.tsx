@@ -69,6 +69,9 @@ export const DeckView: React.FC = () => {
         await dbService.updateQuestion(id, editingQuestion.id, questionData);
       } else {
         await dbService.addQuestion(id, questionData);
+        // Increment contribution score
+        const uid = localStorage.getItem('collab_uid');
+        if (uid) dbService.incrementUserContributions(uid);
       }
       resetForm();
       setShowAddModal(false);

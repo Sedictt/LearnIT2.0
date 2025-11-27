@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Book, Calendar, Users, Gamepad2, ArrowRight, Bug, MessageSquare, Crown, Trophy, Medal } from 'lucide-react';
+import { Plus, Book, Calendar, Users, Gamepad2, ArrowRight, Bug, MessageSquare, Crown, Trophy, Medal, Sparkles } from 'lucide-react';
 import { dbService } from '../firebase';
 import { Deck } from '../types';
 
@@ -21,6 +21,8 @@ export const Dashboard: React.FC = () => {
 
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [contributionLeaderboard, setContributionLeaderboard] = useState<any[]>([]);
+  const [leaderboardType, setLeaderboardType] = useState<'score' | 'contribution'>('score');
 
   useEffect(() => {
     const unsubscribe = dbService.getDecks((data) => {
@@ -33,9 +35,14 @@ export const Dashboard: React.FC = () => {
       setLeaderboard(users);
     });
 
+    const unsubContribution = dbService.getContributionLeaderboard(5, (users) => {
+      setContributionLeaderboard(users);
+    });
+
     return () => {
       unsubscribe();
       unsubLeaderboard();
+      unsubContribution();
     };
   }, []);
 
@@ -140,28 +147,53 @@ export const Dashboard: React.FC = () => {
 
       {/* Leaderboard Section */}
       <section className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 bg-yellow-100 rounded-xl">
-            <Trophy className="text-yellow-600" size={24} />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-xl ${leaderboardType === 'score' ? 'bg-yellow-100' : 'bg-emerald-100'}`}>
+              {leaderboardType === 'score' ? <Trophy className="text-yellow-600" size={24} /> : <Sparkles className="text-emerald-600" size={24} />}
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">
+                {leaderboardType === 'score' ? 'Top Students' : 'Top Contributors'}
+              </h2>
+              <p className="text-slate-500">
+                {leaderboardType === 'score' ? 'Highest total correct answers' : 'Most questions added to reviewers'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Top Students</h2>
-            <p className="text-slate-500">Highest total correct answers</p>
+
+          <div className="flex p-1 bg-slate-100 rounded-xl">
+            <button
+              onClick={() => setLeaderboardType('score')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition ${leaderboardType === 'score' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Top Students
+            </button>
+            <button
+              onClick={() => setLeaderboardType('contribution')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition ${leaderboardType === 'contribution' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Top Contributors
+            </button>
           </div>
         </div>
 
-        {leaderboard.length === 0 ? (
+        {(leaderboardType === 'score' ? leaderboard : contributionLeaderboard).length === 0 ? (
           <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
             <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
               <Medal size={32} />
             </div>
             <h3 className="text-lg font-semibold text-slate-900">No rankings yet</h3>
-            <p className="text-slate-500 max-w-sm mx-auto mt-2">Be the first to climb the leaderboard by reviewing decks and answering correctly!</p>
+            <p className="text-slate-500 max-w-sm mx-auto mt-2">
+              {leaderboardType === 'score'
+                ? "Be the first to climb the leaderboard by reviewing decks and answering correctly!"
+                : "Start adding questions to reviewers to climb the contributor leaderboard!"}
+            </p>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {leaderboard.slice(0, 3).map((user, index) => {
+              {(leaderboardType === 'score' ? leaderboard : contributionLeaderboard).slice(0, 3).map((user, index) => {
                 const isFirst = index === 0;
                 const isSecond = index === 1;
                 const isThird = index === 2;
@@ -198,15 +230,17 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </div>
                     <h3 className="font-bold text-slate-900 text-lg">{user.username}</h3>
-                    <p className="text-slate-500 font-medium">{user.totalCorrectAnswers || 0} pts</p>
+                    <p className="text-slate-500 font-medium">
+                      {leaderboardType === 'score' ? (user.totalCorrectAnswers || 0) : (user.totalContributions || 0)} pts
+                    </p>
                   </div>
                 );
               })}
             </div>
 
-            {leaderboard.length > 3 && (
+            {(leaderboardType === 'score' ? leaderboard : contributionLeaderboard).length > 3 && (
               <div className="mt-6 space-y-3">
-                {leaderboard.slice(3).map((user, index) => (
+                {(leaderboardType === 'score' ? leaderboard : contributionLeaderboard).slice(3).map((user, index) => (
                   <div key={user.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="flex items-center gap-4">
                       <span className="font-bold text-slate-400 w-6 text-center">#{index + 4}</span>
@@ -217,7 +251,9 @@ export const Dashboard: React.FC = () => {
                       />
                       <span className="font-semibold text-slate-700">{user.username}</span>
                     </div>
-                    <span className="font-bold text-indigo-600">{user.totalCorrectAnswers || 0} pts</span>
+                    <span className="font-bold text-indigo-600">
+                      {leaderboardType === 'score' ? (user.totalCorrectAnswers || 0) : (user.totalContributions || 0)} pts
+                    </span>
                   </div>
                 ))}
               </div>
@@ -431,8 +467,8 @@ export const Dashboard: React.FC = () => {
                 <button
                   type="submit"
                   className={`flex-1 px-4 py-2 text-white rounded-lg font-bold transition ${feedbackType === 'bug'
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-indigo-600 hover:bg-indigo-700'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                   disabled={submitting}
                 >

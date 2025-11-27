@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc, limit } from "firebase/firestore";
+import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, getDoc, setDoc, query, where, getDocs, orderBy, increment, deleteDoc, limit, collectionGroup } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -201,6 +201,23 @@ export const dbService = {
       alert("Failed to update score. Check console for details.");
     }
   },
+  incrementUserContributions: async (userId: string) => {
+    const userRef = doc(db, 'users', userId);
+    const username = localStorage.getItem('collab_username') || 'Anonymous';
+    const photoURL = localStorage.getItem('collab_photoURL');
+
+    try {
+      await setDoc(userRef, {
+        totalContributions: increment(1),
+        lastActive: Date.now(),
+        username: username,
+        ...(photoURL && { photoURL })
+      }, { merge: true });
+      console.log(`✅ Contribution incremented for ${username} (${userId})`);
+    } catch (error) {
+      console.error("Error updating user contribution:", error);
+    }
+  },
   getLeaderboard: (limitCount: number, callback: (users: any[]) => void) => {
     const q = query(
       collection(db, 'users'),
@@ -212,6 +229,41 @@ export const dbService = {
       console.log('🏆 Leaderboard updated:', users);
       callback(users);
     });
+  },
+  getContributionLeaderboard: (limitCount: number, callback: (users: any[]) => void) => {
+    const q = query(
+      collection(db, 'users'),
+      orderBy('totalContributions', 'desc'),
+      limit(limitCount)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      callback(users);
+    });
+  },
+  recalculateUserContributions: async (userId: string, username: string) => {
+    try {
+      // Use collectionGroup to query all 'questions' subcollections
+      const questionsQuery = query(
+        collectionGroup(db, 'questions'),
+        where('author', '==', username)
+      );
+
+      const snapshot = await getDocs(questionsQuery);
+      const count = snapshot.size;
+
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        totalContributions: count,
+        lastActive: Date.now()
+      }, { merge: true });
+
+      console.log(`✅ Recalculated contributions for ${username}: ${count}`);
+      return count;
+    } catch (error) {
+      console.error("Error recalculating contributions:", error);
+      throw error;
+    }
   }
 };
 
