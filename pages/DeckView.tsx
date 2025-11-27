@@ -179,13 +179,30 @@ export const DeckView: React.FC = () => {
       let correct = false;
       const input = userTextInput.trim().toLowerCase();
 
-      if (Array.isArray(answer)) {
-        const normalizedAnswer = answer.map(a => a.toLowerCase().trim()).join(', ');
-        if (input === normalizedAnswer) correct = true;
-        else if (answer.some(a => a.toLowerCase().trim() === input)) correct = true;
+      if (currentQ.type === QuestionType.ENUMERATION && Array.isArray(answer)) {
+        // Enumeration: Check if user provided all items, order insensitive
+        const userItems = input.split(',').map(s => s.trim()).filter(s => s !== '');
+        const answerItems = answer.map(s => s.toLowerCase().trim());
+
+        if (userItems.length === answerItems.length) {
+          const sortedUser = [...userItems].sort();
+          const sortedAnswer = [...answerItems].sort();
+          correct = sortedUser.every((val, index) => val === sortedAnswer[index]);
+        }
+      } else if (Array.isArray(answer)) {
+        // Identification with synonyms or legacy array
+        // Check if input matches ANY of the valid answers
+        if (answer.some(a => a.toLowerCase().trim() === input)) {
+          correct = true;
+        }
+        // Also allow comma-separated match for backward compatibility
+        const joinedAnswer = answer.map(a => a.toLowerCase().trim()).join(', ');
+        if (input === joinedAnswer) correct = true;
       } else {
-        correct = input === answer.trim().toLowerCase();
+        // Single string answer (Identification)
+        correct = input === (answer as string).trim().toLowerCase();
       }
+
       setIsCorrect(correct);
       setShowAnswer(true);
 
