@@ -243,23 +243,30 @@ export const dbService = {
   },
   recalculateUserContributions: async (userId: string, username: string) => {
     try {
-      // Use collectionGroup to query all 'questions' subcollections
-      const questionsQuery = query(
-        collectionGroup(db, 'questions'),
-        where('author', '==', username)
-      );
+      // Fallback approach: Iterate through all decks to count questions
+      const decksSnapshot = await getDocs(collection(db, 'decks'));
+      let totalCount = 0;
 
-      const snapshot = await getDocs(questionsQuery);
-      const count = snapshot.size;
+      const promises = decksSnapshot.docs.map(async (deckDoc) => {
+        const q = query(
+          collection(db, `decks/${deckDoc.id}/questions`),
+          where('author', '==', username)
+        );
+        const qSnap = await getDocs(q);
+        return qSnap.size;
+      });
+
+      const counts = await Promise.all(promises);
+      totalCount = counts.reduce((a, b) => a + b, 0);
 
       const userRef = doc(db, 'users', userId);
       await setDoc(userRef, {
-        totalContributions: count,
+        totalContributions: totalCount,
         lastActive: Date.now()
       }, { merge: true });
 
-      console.log(`✅ Recalculated contributions for ${username}: ${count}`);
-      return count;
+      console.log(`✅ Recalculated contributions for ${username}: ${totalCount}`);
+      return totalCount;
     } catch (error) {
       console.error("Error recalculating contributions:", error);
       throw error;
